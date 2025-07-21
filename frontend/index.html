@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Agent Assist Bot</title>
+  <script>
+    let recognition;
+    let isListening = false;
+    let fullTranscriptText = ''; // for accumulating transcript
+
+    function toggleListening() {
+      if (!('webkitSpeechRecognition' in window)) {
+        alert("Your browser doesn't support speech recognition.");
+        return;
+      }
+
+      if (!recognition) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = function () {
+          console.log("🎙️ Speech recognition started");
+          document.getElementById("mic-status").innerHTML = "🎤 Listening...";
+        };
+
+        recognition.onend = function () {
+          console.log("🛑 Speech recognition stopped");
+          document.getElementById("mic-status").innerHTML = "⏹️ Stopped";
+        };
+
+        recognition.onresult = function (event) {
+          let transcript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            transcript += event.results[i][0].transcript;
+          }
+
+          transcript = transcript.trim();
+          console.log("📝 Transcript:", transcript);
+
+          // Update live transcript
+          document.getElementById("transcript").innerText = transcript || "No input captured.";
+
+          // Append to full transcript only if final
+          if (event.results[event.results.length - 1].isFinal) {
+            fullTranscriptText += transcript + ' ';
+            document.getElementById("full-transcript").innerText = fullTranscriptText.trim();
+
+            console.log("📤 Final transcript received. Sending to server...");
+
+            fetch("http://127.0.0.1:5000/process_audio", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ transcript: transcript })
+            })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error("Network response was not ok");
+              }
+              return response.json();
+            })
+            .then(data => {
+              console.log("✅ Server Response:", data);
+              document.getElementById("intent").innerText = data.intent || "No intent detected.";
+              document.getElementById("suggestion").innerText = data.answer || "No answer available.";
+            })
+            .catch(error => {
+              console.error("❌ Error fetching response from server:", error);
+              document.getElementById("intent").innerText = "Error fetching intent";
+              document.getElementById("suggestion").innerText = "Error fetching suggestion";
+            });
+          }
+        };
+
+        recognition.onerror = function (event) {
+          console.error("⚠️ Speech recognition error:", event.error);
+          if (event.error === "no-speech") {
+            alert("No speech detected. Please speak clearly and ensure your microphone is working.");
+          }
+        };
+      }
+
+      // Toggle logic
+      if (isListening) {
+        recognition.stop();
+        isListening = false;
+        document.getElementById("startBtn").innerText = "Handle Phone Call";
+      } else {
+        recognition.start();
+        isListening = true;
+        document.getElementById("startBtn").innerText = "Responding...";
+      }
+    }
+  </script>
+
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1 { color: #333; }
+    #transcript, #intent, #suggestion, #full-transcript {
+      border: 1px solid #ccc;
+      padding: 10px;
+      min-height: 50px;
+      margin-top: 10px;
+      background-color: #f9f9f9;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 15px;
+      font-size: 16px;
+    }
+    #mic-status {
+      margin-top: 10px;
+      font-weight: bold;
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧠 Agent Assist UI</h1>
+
+  <button id="startBtn" onclick="toggleListening()">Handle Phone Call</button>
+  <div id="mic-status">⏹️ Stopped</div>
+
+  <h3>Live Transcript</h3>
+  <div id="transcript">Waiting for input...</div>
+
+  <h3>Full Transcript</h3>
+  <div id="full-transcript">No conversation yet.</div>
+
+  <h3>Detected Intent</h3>
+  <div id="intent">No intent detected yet.</div>
+
+  <h3>Suggested Answer</h3>
+  <div id="suggestion">No suggestion yet.</div>
+</body>
+</html>
